@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Learning to create Choropleth maps</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.8.0/dist/leaflet.css"
+        integrity="sha512-hoalWLoI8r4UszCkZ5kL8vayOGVae1oxXe/2A4AO6J9+580uKHDO3JdHb7NzwwzK5xr/Fs0W40kiNHxM9vyTtQ=="
+        crossorigin="" />
+    <!-- Make sure you put this AFTER Leaflet's CSS -->
+    <script src="https://unpkg.com/leaflet@1.8.0/dist/leaflet.js"
+        integrity="sha512-BB3hKbKWOc9Ez/TAwyWxNXeoV9c1v6FIeYiBieIWkpLjauysF18NzgR1MBNBXf8/KABdlkX68nAhlwcDFLGPCQ=="
+        crossorigin=""></script>
+
+    <style>
+        #map {
+            height: 600px;
+            width: 800px;
+        }
+
+        .info {
+            padding: 6px 8px;
+            font: 14px/16px Arial, Helvetica, sans-serif;
+            /* background: white; */
+            background: rgba(255, 255, 255, 0.8);
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+            border-radius: 5px;
+        }
+
+        .info h4 {
+            margin: 0 0 5px;
+            color: #777;
+        }
+
+        .legend {
+            line-height: 18px;
+            color: #555;
+        }
+
+        .legend i {
+            width: 18px;
+            height: 18px;
+            float: left;
+            margin-right: 8px;
+            opacity: 0.7;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <script type="text/javascript" src="india_states_density.json"></script>
+
+    <script type="text/javascript">
+        var map = L.map('map').setView([20.46016962325237, 77.97697408594735], 4);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        // L.geoJson(statesdata).addTo(map);
+        // Function to return colours for corresponding classes. Good resource for generating colours for classes is colorbrewer2.org
+        function getColor(d) {
+            return d > 1200 ? '#005a32' :
+                d > 700 ? '#238b45' :
+                    d > 500 ? '#41ab5d' :
+                        d > 400 ? '#74c476' :
+                            d > 300 ? '#a1d99b' :
+                                d > 200 ? '#c7e9c0' :
+                                    d > 100 ? '#e5f5e0' :
+                                        '#f7fcf5';
+        }
+
+        // Function to style the map feature using the above getColor() function
+        function style(feature) {
+            return {
+                fillColor: getColor(feature.properties.Density),
+                weight: 2,
+                opacity: 1,
+                color: 'white',
+                dashArray: '3',
+                fillOpacity: 0.7
+            };
+        }
+        //function for adding interaction by user. e.g. Hower over by mouse
+        function highlightFeature(e) {
+            //layer is the feature that is being pointed to by the mouse
+            var layer = e.target;
+
+            layer.setStyle({
+                weight: 5,      //width of the border
+                color: '#666',  // color of the border. Grey in this case
+                dashArray: '',  // STyle of the border. Thick border in this case
+                fillOpacity: 0.7  // Changing the opacity on hower
+            });
+
+            info.update(layer.feature.properties);
+
+            // The below condition is because opera, ie and edge browsers have problems in displaying the borders of adjacent features, hence
+            // using the bringToFront() function to bring the highlighted layer forward without overlap from other features
+            if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) {
+                layer.bringToFront();
+            }
+        }
+
+        // declaring variable that contains the map since resetHighlight() will be using this subsequently
+        var geojson;
+
+        // function to change back the style of 'layer' to original styling
+        function resetHighlight(e) {
+            geojson.resetStyle(e.target);
+            info.update();
+        }
+
+        // self explanatory. getBounds() function on e.target returns bounds which is used to set zoom level to the 'map' variable
+        function zoomToFeature(e) {
+            map.fitBounds(e.target.getBounds());
+        }
+
+        // event listener added for states layer. events are mousover, mouseout and click
+        function onEachFeature(feature, layer) {
+            layer.on({
+                mouseover: highlightFeature,
+                mouseout: resetHighlight,
+                click: zoomToFeature
+            });
+        }
+
+        geojson = L.geoJson(statesdata, {
+            style: style,
+            onEachFeature: onEachFeature
+        }).addTo(map);
+
+        var info = L.control();
+
+        info.onAdd = function (map) {
+            this._div = L.DomUtil.create('div', 'info'); // create a div with a class "info"
+            this.update();
+            return this._div;
+        };
+        // method that we will use to update the control based on feature properties passed
+        info.update = function (props) {
+            this._div.innerHTML = '<h4>India Population Density</h4>' + (props ?
+                '<b>' + props.state + '</b><br />' + Math.round(props.Density) + ' people / Km<sup>2</sup>'
+                : 'Hover over a state');
+        };
+
+        info.addTo(map);
+
+        var legend = L.control({ position: 'bottomright' });
+
+        legend.onAdd = function (map) {
+
+            var div = L.DomUtil.create('div', 'info legend');
+            var grades = [0, 100, 200, 300, 400, 500, 700, 1200];
+            var labels = [];
+            var from, to;
+
+            // loop through our density intervals and generate a label with a colored square for each interval
+            for (var i = 0; i < grades.length; i++) {
+                from = grades[i];
+                to = grades[i + 1];
+
+                labels.push(
+                    '<i style="background:' + getColor(from + 1) + '"></i> ' +
+                    from + (to ? '&ndash;' + to : '+'));
+            }
+
+            div.innerHTML = labels.join('<br>');
+            return div;
+        };
+
+        legend.addTo(map);
+
+    </script>
+</body>
+
+</html>
